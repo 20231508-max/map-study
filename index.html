@@ -3,131 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>초등 거리 측정 도구 (모바일 지원)</title>
+    <title>거리 측정 도구 (비율 정밀 조정)</title>
     <style>
-        /* 모바일에서 화면이 밀리지 않도록 설정 */
         body { margin: 0; background-color: #222; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; touch-action: none; }
-        canvas { box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; background-color: #eee; touch-action: none; }
-        #info { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; pointer-events: none; z-index: 10; font-size: 14px; }
+        canvas { box-shadow: 0 0 20px rgba(0,0,0,0.5); background-color: #444; touch-action: none; border: 1px solid #666; }
+        #info { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 12px; border-radius: 8px; z-index: 10; font-family: sans-serif; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div id="info">손가락이나 마우스로 드래그해서 거리를 재보세요!</div>
+    <div id="info">마우스나 터치로 드래그 해보세요!</div>
     <canvas id="mapCanvas"></canvas>
 
     <script>
         const canvas = document.getElementById('mapCanvas');
         const ctx = canvas.getContext('2d');
+        const info = document.getElementById('info');
         const img = new Image();
 
-        img.src = 'map_image.png'; 
+        img.src = 'map_image.png';
 
         let isDrawing = false;
         let startX, startY;
+        let scaleFactor = 1;
 
-        img.onload = () => {
-            resizeCanvas();
-            render();
-        };
-
-        function resizeCanvas() {
+        function initCanvas() {
             const padding = 20;
-            const maxWidth = window.innerWidth - padding;
-            const maxHeight = window.innerHeight - padding;
-            const ratio = Math.min(maxWidth / img.width, maxHeight / img.height);
+            const winW = window.innerWidth - padding;
+            const winH = window.innerHeight - padding;
             
-            canvas.width = img.width * ratio;
-            canvas.height = img.height * ratio;
+            if (img.complete && img.width > 0) {
+                const ratio = Math.min(winW / img.width, winH / img.height);
+                canvas.width = img.width * ratio;
+                canvas.height = img.height * ratio;
+                scaleFactor = ratio;
+                info.innerHTML = "지도 로드 완료!<br>드래그해서 거리를 재보세요.";
+            } else {
+                canvas.width = winW;
+                canvas.height = winH;
+                scaleFactor = 1;
+                info.innerHTML = "<span style='color: #ff9999;'>이미지를 불러올 수 없습니다.</span><br>파일명을 확인해주세요.";
+            }
+            render();
         }
 
         function render() {
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (img.complete && img.width > 0) {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.strokeStyle = "#555";
+                for(let i=0; i<canvas.width; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+                for(let i=0; i<canvas.height; i+=50) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
+            }
         }
 
         function getDistanceText(px) {
-            const meters = Math.floor(px * 1.137); 
+            // 297m -> 200m 조정을 위해 계수를 0.639로 세팅
+            const originalPx = px / scaleFactor;
+            const meters = Math.floor(originalPx * 0.639); 
+            
             if (meters < 1000) return `${meters} m`;
-            const km = Math.floor(meters / 1000);
-            const m = meters % 1000;
-            return `${km} km ${m} m`;
+            return `${Math.floor(meters / 1000)} km ${meters % 1000} m`;
         }
 
-        // --- 이벤트 처리 (마우스 & 터치 통합) ---
         function getEventPos(e) {
             const rect = canvas.getBoundingClientRect();
-            // 터치 이벤트일 경우와 마우스 이벤트일 경우를 구분해서 좌표 추출
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            return {
-                x: clientX - rect.left,
-                y: clientY - rect.top
-            };
+            return { x: clientX - rect.left, y: clientY - rect.top };
         }
 
-        function startAction(e) {
+        const startAction = (e) => {
             isDrawing = true;
             const pos = getEventPos(e);
-            startX = pos.x;
-            startY = pos.y;
-        }
+            startX = pos.x; startY = pos.y;
+        };
 
-        function moveAction(e) {
+        const moveAction = (e) => {
             if (!isDrawing) return;
-            // 모바일에서 드래그 시 화면 스크롤 방지
             if (e.cancelable) e.preventDefault();
-
             const pos = getEventPos(e);
-            const currX = pos.x;
-            const currY = pos.y;
-
             render();
-
-            // 선 그리기
             ctx.beginPath();
             ctx.moveTo(startX, startY);
-            ctx.lineTo(currX, currY);
+            ctx.lineTo(pos.x, pos.y);
             ctx.strokeStyle = '#FFDC00';
             ctx.lineWidth = 7;
             ctx.lineCap = 'round';
             ctx.stroke();
 
-            // 거리 계산
-            const dx = currX - startX;
-            const dy = currY - startY;
-            const pixelDist = Math.sqrt(dx*dx + dy*dy);
-            const distText = getDistanceText(pixelDist);
+            const dist = Math.sqrt((pos.x - startX)**2 + (pos.y - startY)**2);
+            const distText = getDistanceText(dist);
 
-            // 텍스트 그리기 (테두리 포함)
-            // 모바일 화면 크기를 고려해 폰트 크기를 약간 유동적으로 설정
-            const fontSize = Math.max(30, canvas.width / 15);
-            ctx.font = `bold ${fontSize}px "Malgun Gothic", sans-serif`;
-            
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 4;
-            ctx.strokeText(distText, currX + 10, currY - 20);
+            const fontSize = Math.max(35, canvas.width / 15);
+            ctx.font = `bold ${fontSize}px sans-serif`;
+            ctx.textAlign = "left";
+            ctx.strokeStyle = 'black'; ctx.lineWidth = 5;
+            ctx.strokeText(distText, pos.x + 15, pos.y - 15);
             ctx.fillStyle = 'white';
-            ctx.fillText(distText, currX + 10, currY - 20);
-        }
+            ctx.fillText(distText, pos.x + 15, pos.y - 15);
+        };
 
-        function endAction() {
-            isDrawing = false;
-        }
+        const endAction = () => { isDrawing = false; };
 
-        // 마우스 이벤트 연결
+        img.onload = initCanvas;
+        img.onerror = initCanvas;
+        window.addEventListener('load', initCanvas);
+        window.addEventListener('resize', initCanvas);
         canvas.addEventListener('mousedown', startAction);
         window.addEventListener('mousemove', moveAction);
         window.addEventListener('mouseup', endAction);
-
-        // 터치 이벤트 연결 (스마트폰/태블릿용)
         canvas.addEventListener('touchstart', startAction, {passive: false});
         window.addEventListener('touchmove', moveAction, {passive: false});
         window.addEventListener('touchend', endAction);
-
-        // 화면 크기 변경 시 대응
-        window.addEventListener('resize', () => {
-            resizeCanvas();
-            render();
-        });
     </script>
 </body>
 </html>
