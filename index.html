@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>초등 거리 측정 학습 도구</title>
+    <style>
+        body { margin: 0; background-color: #222; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        canvas { box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; background-color: #eee; }
+        #info { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="info">지도를 클릭하고 드래그하여 거리를 재보세요!</div>
+    <canvas id="mapCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+
+        // 1. 지도 파일명 (사진 파일과 이 HTML 파일이 같은 폴더에 있어야 함)
+        img.src = 'map_image.png'; 
+
+        let isDrawing = false;
+        let startX, startY;
+
+        img.onload = () => {
+            // 화면 크기에 맞춰 이미지 비율 유지하며 크기 조정
+            const padding = 40;
+            const maxWidth = window.innerWidth - padding;
+            const maxHeight = window.innerHeight - padding;
+            const ratio = Math.min(maxWidth / img.width, maxHeight / img.height);
+            
+            canvas.width = img.width * ratio;
+            canvas.height = img.height * ratio;
+            render();
+        };
+
+        function render() {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        }
+
+        function getDistanceText(px) {
+            // 선생님이 요청하신 정밀 비율 (211m -> 200m) 적용
+            const meters = Math.floor(px * 1.137); 
+            if (meters < 1000) return `${meters} m`;
+            const km = Math.floor(meters / 1000);
+            const m = meters % 1000;
+            return `${km} km ${m} m`;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const currX = e.clientX - rect.left;
+            const currY = e.clientY - rect.top;
+
+            render(); // 화면 초기화
+
+            // 줄자(선) 그리기
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(currX, currY);
+            ctx.strokeStyle = '#FFDC00'; // 노란색
+            ctx.lineWidth = 7;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // 거리 계산
+            const dx = currX - startX;
+            const dy = currY - startY;
+            const pixelDist = Math.sqrt(dx*dx + dy*dy);
+            const distText = getDistanceText(pixelDist);
+
+            // 텍스트 그리기 (흰색 본문 + 검은색 테두리)
+            ctx.font = 'bold 60px "Malgun Gothic", sans-serif';
+            ctx.textAlign = 'left';
+            
+            // 검은색 테두리 효과
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 6;
+            ctx.strokeText(distText, currX + 20, currY + 20);
+            
+            // 흰색 글씨
+            ctx.fillStyle = 'white';
+            ctx.fillText(distText, currX + 20, currY + 20);
+        });
+
+        window.addEventListener('mouseup', () => isDrawing = false);
+    </script>
+</body>
+</html>
